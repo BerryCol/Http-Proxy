@@ -6,6 +6,7 @@ import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.*;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.codec.http.*;
+import io.netty.resolver.NoopAddressResolverGroup;
 import io.netty.util.ReferenceCountUtil;
 import com.apollo.uitl.ProtoUtil;
 
@@ -20,7 +21,6 @@ public class HttpProxyServerhandler extends ChannelInboundHandlerAdapter{
      * 代理客户端连接返回结果
      */
     private ChannelFuture channelFuture;
-    private int status=0;
     private boolean isConnect=false;
     private List requestList;
     private String host;
@@ -32,40 +32,37 @@ public class HttpProxyServerhandler extends ChannelInboundHandlerAdapter{
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
         //是单独请求
-        if (msg instanceof HttpRequest){
+        if (msg instanceof FullHttpRequest){
 
-            final HttpRequest request= (HttpRequest) msg;
-            if(status==0){
-                ProtoUtil.RequestProto requestProto=ProtoUtil.getRequestProto(request);
-                //关掉异常连接
-                if(requestProto ==null){
-                    ctx.channel().close();
-                    return;
-                }
-                this.host=requestProto.getHost();
-                this.port=requestProto.getPort();
-                if ("CONNECT".equalsIgnoreCase(request.method().name())) {//建立代理握手
-                    status = 2;
-                    HttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1,
-                            SUCCESS);
-                    ctx.writeAndFlush(response);
-                    ctx.channel().pipeline().remove("httpCodec");
-                    return;
-                }
-                forwardingData(ctx.channel(),request);
+            final FullHttpRequest request= (FullHttpRequest) msg;
+
+            ProtoUtil.RequestProto requestProto=ProtoUtil.getRequestProto(request);
+            //关掉异常连接
+            if(requestProto ==null){
+                ctx.channel().close();
+                return;
             }
-        }else if (msg instanceof HttpContent){
-            if(status==1){
+            this.host=requestProto.getHost();
+            this.port=requestProto.getPort();
+
+
+            if ("CONNECT".equalsIgnoreCase(request.method().name())) {//建立代理握手
+
+                HttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1,
+                        SUCCESS);
+                ctx.writeAndFlush(response);
+                ctx.channel().pipeline().remove("httpCodec");
+                ctx.channel().pipeline().remove("httpAggre");
+                return;
+            }
+            forwardingData(ctx.channel(),msg);
+
+        }else{
                 try {
                     forwardingData(ctx.channel(),msg);
                 }catch (Exception e){
                     ReferenceCountUtil.release(msg);
-                    status = 0;
                 }
-            }else {
-                ReferenceCountUtil.release(msg);
-                status = 0;
-            }
         }
     }
 
@@ -93,8 +90,9 @@ public class HttpProxyServerhandler extends ChannelInboundHandlerAdapter{
             bootstrap.group(ServerConfig.getClinetGroup()) // 注册线程池
                     .channel(NioSocketChannel.class) // 使用NioSocketChannel来作为连接用的channel类
                     .handler(new HttpProxyInitializer(channel));
-
             requestList = new LinkedList();
+            ////代理服务器解析DNS和连接
+            bootstrap.resolver(NoopAddressResolverGroup.INSTANCE);
             channelFuture = bootstrap.connect(host, port);
             channelFuture.addListener((ChannelFutureListener) future -> {
                 if (future.isSuccess()) {
