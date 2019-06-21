@@ -5,8 +5,7 @@ import com.apollo.httpproxyhandler.HttpProxyInitializer;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.*;
 import io.netty.channel.socket.nio.NioSocketChannel;
-import io.netty.handler.codec.http.HttpContent;
-import io.netty.handler.codec.http.HttpRequest;
+import io.netty.handler.codec.http.*;
 import io.netty.util.ReferenceCountUtil;
 import com.apollo.uitl.ProtoUtil;
 
@@ -15,6 +14,8 @@ import java.util.List;
 
 public class HttpProxyServerhandler extends ChannelInboundHandlerAdapter{
 
+    private final static HttpResponseStatus SUCCESS = new HttpResponseStatus(200,
+            "Connection established");
     /**
      * 代理客户端连接返回结果
      */
@@ -43,6 +44,14 @@ public class HttpProxyServerhandler extends ChannelInboundHandlerAdapter{
                 }
                 this.host=requestProto.getHost();
                 this.port=requestProto.getPort();
+                if ("CONNECT".equalsIgnoreCase(request.method().name())) {//建立代理握手
+                    status = 2;
+                    HttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1,
+                            SUCCESS);
+                    ctx.writeAndFlush(response);
+                    ctx.channel().pipeline().remove("httpCodec");
+                    return;
+                }
                 forwardingData(ctx.channel(),request);
             }
         }else if (msg instanceof HttpContent){
