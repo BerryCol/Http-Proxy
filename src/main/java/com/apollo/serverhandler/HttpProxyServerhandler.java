@@ -92,7 +92,7 @@ public class HttpProxyServerhandler extends ChannelInboundHandlerAdapter{
                     .handler(new HttpProxyInitializer(channel));
             requestList = new LinkedList();
             ////代理服务器解析DNS和连接
-            bootstrap.resolver(NoopAddressResolverGroup.INSTANCE);
+//            bootstrap.resolver(NoopAddressResolverGroup.INSTANCE);
             channelFuture = bootstrap.connect(host, port);
             channelFuture.addListener((ChannelFutureListener) future -> {
                 if (future.isSuccess()) {
